@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resilience: 次世代防災ダッシュボード</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap"
+        rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <!-- Sidebar / Navigation (Desktop) -->
+        <nav class="sidebar">
+            <div class="logo">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>Resilience</span>
+            </div>
+            <ul class="nav-links">
+                <li class="active" onclick="app.navigate('home')"><i class="fa-solid fa-house"></i> ホーム</li>
+                <li onclick="app.navigate('alerts')"><i class="fa-solid fa-bell"></i> 災害情報</li>
+                <li onclick="app.navigate('history')"><i class="fa-solid fa-clock-rotate-left"></i> 過去の災害</li>
+                <li onclick="app.navigate('sns')"><i class="fa-brands fa-twitter"></i> SNS情報/速報</li>
+                <li onclick="app.navigate('guide')"><i class="fa-solid fa-book-open"></i> 行動ガイド</li>
+                <li onclick="app.navigate('prepare')"><i class="fa-solid fa-box-open"></i> 備蓄・備え</li>
+                <li onclick="app.navigate('contacts')"><i class="fa-solid fa-address-book"></i> 連絡先</li>
+                <li class="nav-emergency" onclick="app.navigate('safety')"><i class="fa-solid fa-heart-pulse"></i> 安否確認
+                </li>
+            </ul>
+            <div class="settings">
+                <button id="theme-toggle"><i class="fa-solid fa-moon"></i></button>
+                <div class="time-display" id="current-time">--:--</div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header for Mobile / Top Bar -->
+            <header class="top-bar">
+                <div class="region-selector">
+                    <i class="fa-solid fa-location-dot"></i>
+                    <select id="region-select" onchange="app.changeRegion(this.value)">
+                        <option value="all">全国 (All Japan)</option>
+                        <option value="hokkaido">北海道</option>
+                        <option value="tohoku">東北</option>
+                        <option value="kanto">関東</option>
+                        <option value="hokuriku">北陸</option>
+                        <option value="chubu">中部</option>
+                        <option value="kansai">関西</option>
+                        <option value="chugoku">中国</option>
+                        <option value="shikoku">四国</option>
+                        <option value="kyushu">九州</option>
+                    </select>
+                </div>
+                <button id="debug-toggle-status" class="btn-warning-outline">
+                    <i class="fa-solid fa-bug"></i> Simulation
+                </button>
+            </header>
+
+            <!-- VIEW: HOME (Dashboard) -->
+            <div id="view-home" class="page-view active">
+                <div class="dashboard-grid-layout">
+                    <!-- Left: Large Map -->
+                    <div class="map-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-map"></i> リアルタイム状況</h3>
+                            <div class="live-indicator"><span class="blink"></span> LIVE</div>
+                        </div>
+                        <div id="hero-map"></div>
+                    </div>
+
+                    <!-- Right: Regional Info & Stats -->
+                    <div class="info-sidebar">
+                        <div class="regional-info-card" id="regional-info-panel">
+                            <h3><i class="fa-solid fa-circle-info"></i> 地域情報</h3>
+                            <div class="info-content">
+                                <p class="placeholder">地域を選択するか、地図上のマーカーをクリックしてください。</p>
+                            </div>
+                        </div>
+
+                        <!-- Quick Stats -->
+                        <div class="stats-row">
+                            <div class="stat-box warning">
+                                <div class="val" id="stat-alerts">0</div>
+                                <div class="label">現在の警報</div>
+                            </div>
+                            <div class="stat-box success">
+                                <div class="val"><span id="stat-progress">0</span>%</div>
+                                <div class="label">備え完了率</div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="quick-actions">
+                            <button class="action-btn" onclick="app.navigate('safety')">
+                                <i class="fa-solid fa-person-rays"></i> 安否を報告
+                            </button>
+                            <button class="action-btn secondary" onclick="app.navigate('prepare')">
+                                <i class="fa-solid fa-list-check"></i> チェックリスト
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: ALERTS (Detailed List) -->
+            <div id="view-alerts" class="page-view">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-triangle-exclamation"></i> 災害情報一覧</h2>
+                    <button class="back-btn" onclick="app.navigate('home')">戻る</button>
+                </div>
+                <div id="alert-feed-container" class="feed-container">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- VIEW: HISTORY (過去の災害) -->
+            <div id="view-history" class="page-view">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-clock-rotate-left"></i> 過去の災害情報</h2>
+                    <button class="back-btn" onclick="app.navigate('home')">戻る</button>
+                </div>
+
+                <!-- Filter Controls -->
+                <div style="background: white; padding: 1rem 1.5rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 1rem;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <label style="font-weight: 600; color: #333;"><i class="fa-solid fa-filter"></i> 災害種別:</label>
+                            <select id="history-type-filter" onchange="app.renderHistoryView()" style="padding: 0.5rem 1rem; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+                                <option value="all">すべて</option>
+                                <option value="earthquake">地震</option>
+                                <option value="heavyRain">大雨</option>
+                                <option value="heavySnow">大雪</option>
+                                <option value="storm">暴風</option>
+                                <option value="flood">洪水</option>
+                                <option value="landslide">土砂災害</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <label style="font-weight: 600; color: #333;"><i class="fa-solid fa-calendar"></i> 期間:</label>
+                            <select id="history-period-filter" onchange="app.renderHistoryView()" style="padding: 0.5rem 1rem; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+                                <option value="7">過去7日間</option>
+                                <option value="14">過去14日間</option>
+                                <option value="30" selected>過去30日間</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <label style="font-weight: 600; color: #333;"><i class="fa-solid fa-eye"></i> 表示:</label>
+                            <div style="display: flex; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+                                <button id="view-mode-list" onclick="app.setHistoryViewMode('list')" style="padding: 0.5rem 1rem; border: none; background: var(--primary-color); color: white; cursor: pointer;">
+                                    <i class="fa-solid fa-list"></i> 一覧
+                                </button>
+                                <button id="view-mode-map" onclick="app.setHistoryViewMode('map')" style="padding: 0.5rem 1rem; border: none; background: #f9f9f9; color: #333; cursor: pointer;">
+                                    <i class="fa-solid fa-map"></i> マップ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Summary -->
+                <div id="history-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                    <!-- Injected by JS -->
+                </div>
+
+                <!-- List View -->
+                <div id="history-list-view" class="feed-container">
+                    <!-- Injected by JS -->
+                </div>
+
+                <!-- Map View -->
+                <div id="history-map-view" style="display: none;">
+                    <div style="background: white; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 style="margin: 0;"><i class="fa-solid fa-map-location-dot"></i> 災害発生マップ（履歴）</h3>
+                            <div style="font-size: 0.9rem; color: #666;">
+                                <span id="history-map-count">0</span>件の災害を表示中
+                            </div>
+                        </div>
+                        <div id="history-map" style="height: 500px; border-radius: 8px; overflow: hidden;"></div>
+                        <div style="margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 8px;">
+                            <h4 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #666;">凡例</h4>
+                            <div id="history-map-legend" style="display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.85rem;">
+                                <!-- Injected by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: NEWS & INFORMATION (Replaced Twitter) -->
+            <div id="view-sns" class="page-view">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-newspaper"></i> 災害情報・ニュース</h2>
+                    <button class="back-btn" onclick="app.navigate('home')">戻る</button>
+                </div>
+
+                <div style="max-width: 1200px; margin: 0 auto;">
+                    <!-- Quick News Links -->
+                    <div
+                        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 1rem; color: white;">
+                        <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fa-solid fa-newspaper" style="font-size: 1.5rem;"></i>
+                            最新災害ニュース
+                        </h3>
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                            <a href="https://news.yahoo.co.jp/search?p=%E5%9C%B0%E9%9C%87+%E7%81%BD%E5%AE%B3&ei=UTF-8"
+                                target="_blank"
+                                style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border-radius: 10px; text-decoration: none; color: white; border: 1px solid rgba(255,255,255,0.3); transition: all 0.3s;">
+                                <i class="fa-solid fa-rss" style="font-size: 2rem; color: #FFD600;"></i>
+                                <div>
+                                    <div style="font-weight: bold; font-size: 1.1rem;">Yahoo!ニュース</div>
+                                    <div style="font-size: 0.9em; opacity: 0.9;">災害情報検索</div>
+                                </div>
+                            </a>
+                            <a href="https://www3.nhk.or.jp/news/saigai/" target="_blank"
+                                style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border-radius: 10px; text-decoration: none; color: white; border: 1px solid rgba(255,255,255,0.3); transition: all 0.3s;">
+                                <i class="fa-solid fa-broadcast-tower" style="font-size: 2rem; color: #D50000;"></i>
+                                <div>
+                                    <div style="font-weight: bold; font-size: 1.1rem;">NHK NEWS</div>
+                                    <div style="font-size: 0.9em; opacity: 0.9;">災害・安全情報</div>
+                                </div>
+                            </a>
+                            <a href="https://crisis.yahoo.co.jp/" target="_blank"
+                                style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border-radius: 10px; text-decoration: none; color: white; border: 1px solid rgba(255,255,255,0.3); transition: all 0.3s;">
+                                <i class="fa-solid fa-map-location-dot" style="font-size: 2rem; color: #4CAF50;"></i>
+                                <div>
+                                    <div style="font-weight: bold; font-size: 1.1rem;">災害マップ</div>
+                                    <div style="font-size: 0.9em; opacity: 0.9;">リアルタイム情報</div>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Grid for other sources -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+
+                        <!-- Official Links Card -->
+                        <div
+                            style="padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                            <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-link"
+                                    style="color: var(--primary-color);"></i> 公式情報源</h3>
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                <a href="https://www3.nhk.or.jp/news/saigai/" target="_blank"
+                                    style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; background: #f5f5f5; border-radius: 8px; text-decoration: none; color: #333;">
+                                    <i class="fa-solid fa-broadcast-tower" style="color: #D50000;"></i>
+                                    <div><strong>NHK 災害情報</strong><br><span
+                                            style="font-size:0.85em;color:#666">最新ニュース</span></div>
+                                </a>
+                                <a href="https://www.jma.go.jp/bosai/" target="_blank"
+                                    style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; background: #f5f5f5; border-radius: 8px; text-decoration: none; color: #333;">
+                                    <i class="fa-solid fa-cloud-sun" style="color: #2962FF;"></i>
+                                    <div><strong>気象庁 防災情報</strong><br><span
+                                            style="font-size:0.85em;color:#666">地震・気象警報</span></div>
+                                </a>
+                                <a href="https://crisis.yahoo.co.jp/" target="_blank"
+                                    style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; background: #f5f5f5; border-radius: 8px; text-decoration: none; color: #333;">
+                                    <i class="fa-solid fa-triangle-exclamation" style="color: #FFD600;"></i>
+                                    <div><strong>Yahoo!災害情報</strong><br><span
+                                            style="font-size:0.85em;color:#666">災害マップ</span></div>
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- All Disasters -->
+                        <div
+                            style="padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                            <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-triangle-exclamation"
+                                    style="color: #FF6F00;"></i> 最新災害情報</h3>
+                            <div id="jma-earthquake-list" style="font-size: 0.9em;">読み込み中...</div>
+                        </div>
+
+                        <!-- SNS Search Links -->
+                        <div
+                            style="padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                            <h3 style="margin-bottom: 1rem;"><i class="fa-brands fa-twitter"
+                                    style="color: #1DA1F2;"></i> SNS検索</h3>
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                <a href="https://twitter.com/search?q=%23地震&f=live" target="_blank"
+                                    style="padding: 0.5rem; background: #f0f8ff; border-radius: 6px; text-decoration: none; color: var(--primary-color);">#地震</a>
+                                <a href="https://twitter.com/search?q=%23災害&f=live" target="_blank"
+                                    style="padding: 0.5rem; background: #f0f8ff; border-radius: 6px; text-decoration: none; color: var(--primary-color);">#災害</a>
+                                <a href="https://twitter.com/nhk_news" target="_blank"
+                                    style="padding: 0.5rem; background: #fff0f0; border-radius: 6px; text-decoration: none; color: #D50000;"><i
+                                        class="fa-solid fa-circle-check"></i> @nhk_news</a>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: GUIDE -->
+            <div id="view-guide" class="page-view">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-book-open"></i> 災害別行動ガイド</h2>
+                    <button class="back-btn" onclick="app.navigate('home')">戻る</button>
+                </div>
+                <div id="guide-container" class="guide-grid">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- VIEW: PREPARE (Checklist) -->
+            <div id="view-prepare" class="page-view">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-backpack"></i> 備蓄・持ち出し品リスト</h2>
+                    <button class="back-btn" onclick="app.navigate('home')">戻る</button>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div id="total-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                    </div>
+                    <p style="text-align: right; font-weight: bold; margin-top: 0.5rem;"><span
+                            id="total-progress-text">0</span>% 完了</p>
+                </div>
+
+                <div id="checklist-container" class="checklist-grid">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- VIEW: CONTACTS -->
+            <div id="view-contacts" class="page-view">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-address-book"></i> 緊急連絡先</h2>
+                    <button class="back-btn" onclick="app.navigate('home')">戻る</button>
+                </div>
+                <div class="contact-layout">
+                    <div class="contact-form-card">
+                        <h3>新規登録</h3>
+                        <input type="text" id="contact-name" placeholder="名前 (例: 母)">
+                        <input type="text" id="contact-rel" placeholder="続柄 (例: 母)">
+                        <input type="tel" id="contact-tel" placeholder="電話番号">
+                        <button id="add-contact-btn" class="btn-primary full">追加</button>
+                    </div>
+                    <div id="contact-list" class="contact-list-grid">
+                        <!-- Injected by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: SAFETY -->
+            <div id="view-safety" class="page-view">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-heart-pulse"></i> 安否確認</h2>
+                    <button class="back-btn" onclick="app.navigate('home')">戻る</button>
+                </div>
+                <div class="safety-dashboard">
+                    <div class="safety-card safe" onclick="app.handleSafetyStatus('safe')">
+                        <i class="fa-regular fa-face-smile"></i>
+                        <h3>無事です</h3>
+                        <p>I am safe</p>
+                    </div>
+                    <div class="safety-card danger" onclick="app.handleSafetyStatus('help')">
+                        <i class="fa-solid fa-hand-holding-medical"></i>
+                        <h3>助けてください</h3>
+                        <p>Need Help</p>
+                    </div>
+                </div>
+                <div class="safety-history">
+                    <h3>送信履歴 (Simulation)</h3>
+                    <ul id="safety-log">
+                        <li>まだ送信されていません</li>
+                    </ul>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Twitter Widget -->
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+    <script src="js/data.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
