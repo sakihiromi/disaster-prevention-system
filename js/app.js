@@ -5,6 +5,7 @@ class App {
         this.historyViewMode = 'list'; // 'list' or 'map'
         this.historyMap = null;
         this.historyMarkers = [];
+        this.selectedRegion = 'all'; // 現在選択されている地域
         this.init();
     }
 
@@ -191,8 +192,48 @@ class App {
 
     // --- Region Logic ---
     changeRegion(regionKey) {
+        this.selectedRegion = regionKey;
         MapManager.flyToRegion(regionKey);
         // Panel update is handled in flyToRegion via app.showRegionalInfo
+        
+        // 災害情報一覧と過去の災害情報を更新
+        this.renderAlerts();
+        if (this.currentView === 'history') {
+            this.renderHistoryView();
+        }
+    }
+
+    // 地域の座標範囲を定義（中心点から約300km以内を対象とする）
+    getRegionBounds() {
+        return {
+            hokkaido: { minLat: 41.0, maxLat: 45.5, minLng: 139.0, maxLng: 146.0 },
+            tohoku: { minLat: 37.0, maxLat: 41.5, minLng: 139.0, maxLng: 142.5 },
+            kanto: { minLat: 34.5, maxLat: 37.0, minLng: 138.0, maxLng: 141.0 },
+            hokuriku: { minLat: 35.5, maxLat: 38.0, minLng: 135.5, maxLng: 138.5 },
+            chubu: { minLat: 34.5, maxLat: 36.5, minLng: 136.0, maxLng: 139.0 },
+            kansai: { minLat: 33.5, maxLat: 36.0, minLng: 134.0, maxLng: 137.0 },
+            chugoku: { minLat: 33.5, maxLat: 35.5, minLng: 130.5, maxLng: 134.5 },
+            shikoku: { minLat: 32.5, maxLat: 34.5, minLng: 132.0, maxLng: 135.0 },
+            kyushu: { minLat: 30.5, maxLat: 34.0, minLng: 129.0, maxLng: 132.5 }
+        };
+    }
+
+    // 災害データを選択された地域でフィルタリング
+    filterByRegion(alerts) {
+        if (this.selectedRegion === 'all' || !this.selectedRegion) {
+            return alerts;
+        }
+
+        const bounds = this.getRegionBounds()[this.selectedRegion];
+        if (!bounds) return alerts;
+
+        return alerts.filter(alert => {
+            if (!alert.lat || !alert.lng) return false;
+            return alert.lat >= bounds.minLat && 
+                   alert.lat <= bounds.maxLat && 
+                   alert.lng >= bounds.minLng && 
+                   alert.lng <= bounds.maxLng;
+        });
     }
 
     showRegionalInfo(regionKey, alertData = null) {
@@ -313,17 +354,33 @@ class App {
         const feed = document.getElementById('alert-feed-container');
         if (!feed) return;
 
-        // Count for Home Badge
-        const count = disasterData.alerts ? disasterData.alerts.length : 0;
-        const statAlerts = document.getElementById('stat-alerts');
-        if (statAlerts) statAlerts.textContent = count;
+        // 地域フィルタを適用
+        const allAlerts = disasterData.alerts || [];
+        const filteredAlerts = this.filterByRegion(allAlerts);
 
-        if (count === 0) {
-            feed.innerHTML = '<p>現在、警報はありません。</p>';
+        // Count for Home Badge (全体の件数を表示)
+        const totalCount = allAlerts.length;
+        const statAlerts = document.getElementById('stat-alerts');
+        if (statAlerts) statAlerts.textContent = totalCount;
+
+        // 地域ラベルを更新
+        const regionLabel = document.getElementById('alerts-region-label');
+        if (regionLabel) {
+            if (this.selectedRegion === 'all') {
+                regionLabel.textContent = '';
+            } else {
+                const regionInfo = disasterData.regions[this.selectedRegion];
+                regionLabel.textContent = `- ${regionInfo?.name || this.selectedRegion}`;
+            }
+        }
+
+        if (filteredAlerts.length === 0) {
+            const regionName = this.selectedRegion === 'all' ? '' : `（${disasterData.regions[this.selectedRegion]?.name || this.selectedRegion}）`;
+            feed.innerHTML = `<p>現在、${regionName}警報はありません。</p>`;
             return;
         }
 
-        feed.innerHTML = disasterData.alerts.map(alert => {
+        feed.innerHTML = filteredAlerts.map(alert => {
             const icon = alert.icon || 'fa-circle-exclamation';
             const typeInfo = disasterData.disasterTypes[alert.disasterType];
             const bgColor = typeInfo ? typeInfo.bgColor : '#fff';
@@ -491,6 +548,9 @@ class App {
             history = history.filter(h => h.disasterType === typeFilter);
         }
 
+        // 地域フィルタを適用
+        history = this.filterByRegion(history);
+
         // Sort by timestamp (newest first)
         history.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
@@ -499,6 +559,17 @@ class App {
 
     renderHistoryView() {
         const history = this.getFilteredHistory();
+
+        // 地域ラベルを更新
+        const regionLabel = document.getElementById('history-region-label');
+        if (regionLabel) {
+            if (this.selectedRegion === 'all') {
+                regionLabel.textContent = '';
+            } else {
+                const regionInfo = disasterData.regions[this.selectedRegion];
+                regionLabel.textContent = `- ${regionInfo?.name || this.selectedRegion}`;
+            }
+        }
 
         this.renderHistoryStats(history);
 
